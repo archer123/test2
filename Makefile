@@ -2,11 +2,7 @@
 all: client server
 
 client: client.c
-	gcc -Wall -pedantic -O2 -pthread -DNDEBUG -D_GNU_SOURCE -std=gnu99 $^ -lm -o $@
+	gcc client.c -o client
 
 server: server.c
-	gcc -Wall -pedantic -O2 -pthread -DNDEBUG -D_GNU_SOURCE -std=gnu99 $^ -o $@
-
-.PHONY : clean
-clean : 
-	-rm client server
+	gcc server.c -o server

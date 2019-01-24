@@ -1,32 +1,20 @@
+#include<stdlib.h>
+#include<pthread.h>
+#include<sys/socket.h>
+#include<sys/types.h>       //pthread_t , pthread_attr_t and so on.
+#include<stdio.h>
+#include<netinet/in.h>      //structure sockaddr_in
+#include<arpa/inet.h>       //Func : htonl; htons; ntohl; ntohs
+#include<assert.h>          //Func :assert
+#include<string.h>          //Func :memset
+#include<unistd.h>          //Func :close,write,read
+#include<errno.h>
+#define SOCK_PORT 5000
+#define SOCK_PORT2 5100
+#define PAKCETSIZE 4096
 
-#include <arpa/inet.h>
-#include <netinet/tcp.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <stdbool.h>
-
-#include <pthread.h>
-
-
-#define PACKETSIZE 2000
-
-
-int send_packet(int fd) {
-  char buffer[PACKETSIZE];
-
-  memset(buffer + sizeof(struct timeval), ' ', (unsigned int)sizeof(buffer) - (unsigned int)sizeof(struct timeval));
-  int ret = send(fd, buffer, PACKETSIZE, 0);
-  if (ret != PACKETSIZE) {
-    perror("send");
-    exit(1);
-  }
-  return ret;
-}
-
+static void Data_handle_up(void * sock_fd);
+static void Data_handle_down(void * sock_fd);
 
 int accept_any(int fds[], unsigned int count, struct sockaddr *addr, socklen_t *addrlen, int *whichfd)
 {
@@ -51,192 +39,180 @@ int accept_any(int fds[], unsigned int count, struct sockaddr *addr, socklen_t *
             fd = fds[i];
             break;
         }
+    *whichfd = fd;
     if (fd == -1)
         return -1;
     else
         return accept(fd, addr, addrlen);
 }
 
+int main()
+{
 
+    int sockfd_server;
+    int sockfd;
+    int fd_temp;
+    struct sockaddr_in s_addr_in;
+    struct sockaddr_in s_addr_client;
+    int client_length;
 
+    sockfd_server = socket(AF_INET,SOCK_STREAM,0);  //ipv4,TCP
+    assert(sockfd_server != -1);
 
-void *set_socket(void *port) {
+    //before bind(), set the attr of structure sockaddr.
+    memset(&s_addr_in,0,sizeof(s_addr_in));
+    s_addr_in.sin_family = AF_INET;
+    s_addr_in.sin_addr.s_addr = htonl(INADDR_ANY);  //trans addr from uint32_t host byte order to network byte order.
+    s_addr_in.sin_port = htons(SOCK_PORT);          //trans port from uint16_t host byte order to network byte order.
+    fd_temp = bind(sockfd_server,(struct scokaddr *)(&s_addr_in),sizeof(s_addr_in));
 
-  int thisport = *((int*)port);
-  printf("this port : %d\n", thisport);
-
-  struct sockaddr_in server;
-
-  memset(&server, 0, sizeof(server));
-  server.sin_family = AF_INET;
-  server.sin_port = htons(thisport);
-
-  server.sin_addr.s_addr = htons(INADDR_ANY);
-
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) {
-    perror("socket");
-    exit(1);
-  }
-  // Set SO_REUSEADDR on.
-  int on = 1;
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != 0) {
-    perror("setsockopt");
-    exit(1);
-  }
-
-  int flags = fcntl(fd, F_GETFL, 0);
-
-  if (flags == -1) {
-    perror("fcntl");
-    exit(1);
-  }
-
-  if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) != 0) {
-    perror("fcntl");
-    exit(1);
-  }
-
-  
-
-  if (bind(fd, (struct sockaddr*)&server, sizeof(server)) != 0) {
-    perror("bind");
-    exit(1);
-  }
-  
-
-  if (listen(fd, 127) != 0) {
-    perror("listen");
-    exit(1);
-  }
-
-  fd_set fds;
-  int maxfd = fd;
-  struct timeval tv;
-  FD_ZERO(&fds);
-  FD_SET(fd, &fds);
-  while (1) {
-    fd_set rfds;
-    memcpy(&rfds, &fds, sizeof(fds));
-    tv.tv_sec  = 1;
-    tv.tv_usec = 0;
-
-    int ready = select(maxfd + 1, &rfds, 0, 0, &tv);
-
-    if (ready == -1) {
-      perror("select");
-      exit(1);
+    if(fd_temp == -1)
+    {
+        fprintf(stderr,"bind error!\n");
+        exit(1);
     }
 
-    if (ready == 0) {
-
-      continue;
+    fd_temp = listen(sockfd_server,127);
+    if(fd_temp == -1)
+    {
+        fprintf(stderr,"listen error!\n");
+        exit(1);
     }
 
-    for (int i = 3; i <= maxfd; i++) {
-      if (FD_ISSET(i, &rfds)) {
-        //printf ("%d, %d \n", i, fd);
-        if (i == fd) {
-          while (1) {
-            int nfd = accept(fd, 0, 0);
+    int sockfd_server2;
+    int sockfd2;
+    int fd_temp2;
+    struct sockaddr_in s_addr_in2;
+    struct sockaddr_in s_addr_client2;
+    int client_length2;
 
-            if (nfd == -1) {
-              if (errno != EWOULDBLOCK) {
-                perror("accept");
-                exit(1);
-              }
+    sockfd_server2 = socket(AF_INET,SOCK_STREAM,0);  //ipv4,TCP
+    assert(sockfd_server2 != -1);
 
-              break;
-            }
+    //before bind(), set the attr of structure sockaddr.
+    memset(&s_addr_in2,0,sizeof(s_addr_in2));
+    s_addr_in2.sin_family = AF_INET;
+    s_addr_in2.sin_addr.s_addr = htonl(INADDR_ANY);  //trans addr from uint32_t host byte order to network byte order.
+    s_addr_in2.sin_port = htons(SOCK_PORT2);          //trans port from uint16_t host byte order to network byte order.
+    fd_temp2 = bind(sockfd_server2,(struct scokaddr *)(&s_addr_in2),sizeof(s_addr_in2));
 
-            FD_SET(nfd, &fds);
+    if(fd_temp2 == -1)
+    {
+        fprintf(stderr,"bind error!\n");
+        exit(1);
+    }
 
-            if (nfd > maxfd) {
-              maxfd = nfd;
-            }
+    fd_temp2 = listen(sockfd_server2,127);
+    if(fd_temp2 == -1)
+    {
+        fprintf(stderr,"listen error!\n");
+        exit(1);
+    }
+
+    int sockfds[2] = {sockfd_server, sockfd_server2};
+
+    while(1)
+    {
+        printf("waiting for new connection...\n");
+        pthread_t thread_id;
+        client_length = sizeof(s_addr_client);
+        int *whichfd;
+        printf("what new connection? \n");
+        //Block here. Until server accpets a new connection.
+        sockfd = accept_any(sockfds, 2, (struct sockaddr *)(&s_addr_client),(socklen_t *)(&client_length), whichfd);
+        if(sockfd == -1)
+        {
+            fprintf(stderr,"Accept error!\n");
+            continue;                               //ignore current socket ,continue while loop.
+        }
+        printf("whichfd %d, sockfd_server %d, sockfd_server2 %d\n", *whichfd, sockfd_server, sockfd_server2 );
+        printf("A new connection occurs!\n");
+        if(*whichfd == sockfd_server){
+          int ret = pthread_create(&thread_id,NULL,(void *)(&Data_handle_up),(void *)(&sockfd));
+          if(ret == -1)
+          {
+              fprintf(stderr,"pthread_create error!\n");
+              break;                                  //break while loop
           }
-        } else {
-
-          char buffer[PACKETSIZE];
-
-          while (1) {
-            printf("thisport %d\n", thisport);
-            if (thisport == 5000){
-              int n = recv(i, buffer, PACKETSIZE, MSG_DONTWAIT);
-
-              if (n != PACKETSIZE) {
-                if (errno == EWOULDBLOCK) {
-                  break;
-                } else if (errno == ECONNRESET) {
-                  // Close the socket.
-                  n = 0;
-                } else {
-                  perror("recv");
-                  exit(1);
-                }
-              }
-              printf ("recv data %d\n", n);
-
-              if (n == 0) {
-
-                close(i);
-
-                FD_CLR(i, &fds);
-
-                if (i == maxfd) {
-                  while (!FD_ISSET(maxfd, &fds)) {
-                    maxfd--;
-                  }
-                }
-
-                break;
-              }
-            }
-            
-            if (thisport == 5100){
-              printf("sending \n" );          
-              int n = send_packet(i);
-              
-            }
-            
-
+        }else if(*whichfd == sockfd_server2){
+          int ret = pthread_create(&thread_id,NULL,(void *)(&Data_handle_down),(void *)(&sockfd));
+          if(ret == -1)
+          {
+              fprintf(stderr,"pthread_create error!\n");
+              break;                                  //break while loop
           }
         }
-      }
     }
-  }
+
+    //Clear
+    int ret = close(sockfd_server); //shut down the all or part of a full-duplex connection.
+    assert(ret != -1);
+
+    printf("Server shuts down\n");
+    return 0;
+}
+
+static void Data_handle_up(void * sock_fd)
+{
+    int fd = *((int *)sock_fd);
+    int i_recvBytes;
+    char data_recv[PAKCETSIZE];
+
+    while(1)
+    {
+        //printf("waiting for request...\n");
+        //Reset data.
+        memset(data_recv,0,PAKCETSIZE);
+
+        i_recvBytes = read(fd,data_recv,PAKCETSIZE);
+        if(i_recvBytes == 0)
+        {
+            printf("Maybe the client has closed\n");
+            break;
+        }
+        if(i_recvBytes == -1)
+        {
+            perror("read");
+        }
+        //printf("read from client : %s\n",data_recv);
+    }
+
+    //Clear
+    printf("terminating current client_connection...\n");
+    close(fd);            //close a file descriptor.
+    pthread_exit(NULL);   //terminate calling thread!
 }
 
 
 
-int main() {
+static void Data_handle_down(void * sock_fd)
+{
+    signal(SIGPIPE, SIG_IGN);
+    int fd = *((int *)sock_fd);
+    int i_sendBytes;
+    char data_to_send[PAKCETSIZE];
 
-  // int fdup = create_socket(5000);
-  // int fddown = create_socket(5100);
+    while(1)
+    {
+        //Reset data.
+        memset(data_to_send,' ',PAKCETSIZE);
 
-  // int fds[2] = {fdup, fddown};
-  // unsigned int count = 2;
-  // int* whichfd = NULL;
-  // printf("%d\n", count);
-  // if (accept_any(fds, count, 0, 0, whichfd)==-1){
-  //     perror("accept");
-  // }
-  // bool updown = (whichfd == fdup);
+        i_sendBytes = write(fd,data_to_send,PAKCETSIZE);
 
-   pthread_t threads[2];
-   int index[2];
-   index[0] = 5000;
-   index[1] = 5100;
 
-   for (int i = 0; i < 2; i++) {
-        printf("main() : 创建线程, %d\n", i);
-
-        int ret = pthread_create(&threads[i], NULL, set_socket, (void*)&(index[i]));
-        if (ret != 0) {
-            printf("pthread_create error: error_code = %d\n", ret);
-            exit(-1);
+        if(i_sendBytes == 0)
+        {
+          printf("Maybe the client has closed\n");
+          break;
         }
-        
+        if(i_sendBytes == -1)
+        {
+          break;
+        }
     }
-    pthread_exit(NULL);
+
+    //Clear
+    printf("terminating current client_connection...\n");
+    close(fd);            //close a file descriptor.
+    pthread_exit(NULL);   //terminate calling thread!
 }

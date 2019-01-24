@@ -11,11 +11,11 @@
 
 #define PACKETSIZE 4096
 
-int create_socket(const char* ip) {
+int create_socket(const char* ip, int port) {
   struct sockaddr_in client;
   memset(&client, 0, sizeof(client));
   client.sin_family      = AF_INET;
-  client.sin_port        = htons(5000);
+  client.sin_port        = port;
   client.sin_addr.s_addr = htons(INADDR_ANY);
 
   int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -28,7 +28,7 @@ int create_socket(const char* ip) {
   struct sockaddr_in other;
   memset(&other, 0, sizeof(other));
   other.sin_family = AF_INET;
-  other.sin_port   = htons(5000);
+  other.sin_port   = htons(port);
 
   if (inet_aton(ip, &other.sin_addr) == 0) {
     perror("inet_aton");
@@ -40,15 +40,23 @@ int create_socket(const char* ip) {
     exit(1);
   }
 
+  // get port for every socket
+  socklen_t sother = sizeof(other);
+  int s = getsockname(fd, (struct sockaddr *)&other, &sother);
+  if (s<0){
+    perror("getsockname");
+  }
+  else{
+    printf("port number %d\n", ntohs(other.sin_port));
+  }
+
   return fd;
 }
 
 int send_packet(int fd) {
   char buffer[PACKETSIZE];
-
-  gettimeofday((struct timeval*)buffer, 0);
-  memset(buffer + sizeof(struct timeval), ' ', (unsigned int)sizeof(buffer) - (unsigned int)sizeof(struct timeval));
-  int ret = send(fd, buffer, PACKETSIZE, 0);
+  memset(buffer, ' ', (unsigned int)sizeof(buffer));
+  int ret = write(fd, buffer, PACKETSIZE);
   if (ret != PACKETSIZE) {
     perror("send");
     exit(1);
@@ -59,6 +67,7 @@ int send_packet(int fd) {
 
 
 int main(int argc,const char* argv[]) {
+  
   int nbsocket = 1;
   const char* ip = "132.227.122.38";
   bool updown = true;
@@ -78,9 +87,16 @@ int main(int argc,const char* argv[]) {
   int maxfd = 0;
   fd_set fds;
   FD_ZERO(&fds);
+  int fd;
 
   for (int i = 0; i < nbsocket; ++i) {
-    int fd = create_socket(ip);
+    if(updown){
+      fd = create_socket(ip, 5000);
+    }else {
+      printf("%d\n",5100);
+      fd = create_socket(ip, 5100);
+    }
+
 
     //send_packet(fd);
     FD_SET(fd, &fds);
@@ -95,8 +111,8 @@ int main(int argc,const char* argv[]) {
       // Upload part
       char sbuffer[32];
       if (now > next) {
-        snprintf(sbuffer, sizeof(sbuffer), "upload %u mbits/s",  sent * PACKETSIZE * 8 / 1000000 );
-        printf("Sent %u packets per second, throughput is %s\n", sent, sbuffer);
+        snprintf(sbuffer, sizeof(sbuffer), "%u mbits/s",  sent * PACKETSIZE * 8 / 1000000 );
+        printf("Sent %u packets per second, upload throughput is %s\n", sent, sbuffer);
 
         next++;
 
@@ -110,26 +126,25 @@ int main(int argc,const char* argv[]) {
         }
       }
     }else{
+
       //Download part
       char rbuffer[32];
       if (now > next) {
-        snprintf(rbuffer, sizeof(rbuffer), "download %u mbits/s",  recved * PACKETSIZE * 8 / 1000000 );
-        printf("Sent %u packets per second, throughput is %s\n", recved, rbuffer);
+        snprintf(rbuffer, sizeof(rbuffer), "%u mbits/s",  recved * PACKETSIZE * 8 / 1000000 );
+        printf("recieve %u packets per second, download throughput is %s\n", recved, rbuffer);
 
         next++;
 
-        sent = 0;
+        recved = 0;
       }
       for (int i = 3; i <= maxfd; ++i) {
         if (FD_ISSET(i, &fds)) {
-          char buffer[PACKETSIZE];
-          int  n = recv(i, buffer, sizeof(buffer), MSG_WAITALL);
 
-          if (n != PACKETSIZE) {
-            perror("recv");
-            exit(1);
-          }
-          recved++;
+          char buffer[PACKETSIZE];
+          int n = read(i, buffer, sizeof(buffer));
+          recved += n;
+          //printf("n: %d",n);
+
         }
       }
     }
