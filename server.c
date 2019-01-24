@@ -9,14 +9,18 @@
 #include<string.h>          //Func :memset
 #include<unistd.h>          //Func :close,write,read
 #include<errno.h>
+#include<signal.h>
+
 #define SOCK_PORT 5000
 #define SOCK_PORT2 5100
 #define PAKCETSIZE 4096
 
+
+static int whichfd;
 static void Data_handle_up(void * sock_fd);
 static void Data_handle_down(void * sock_fd);
 
-int accept_any(int fds[], unsigned int count, struct sockaddr *addr, socklen_t *addrlen, int *whichfd)
+int accept_any(int fds[], unsigned int count, struct sockaddr *addr, socklen_t *addrlen)
 {
     fd_set readfds;
     int maxfd, fd;
@@ -39,7 +43,7 @@ int accept_any(int fds[], unsigned int count, struct sockaddr *addr, socklen_t *
             fd = fds[i];
             break;
         }
-    *whichfd = fd;
+    whichfd = fd;
     if (fd == -1)
         return -1;
     else
@@ -64,7 +68,7 @@ int main()
     s_addr_in.sin_family = AF_INET;
     s_addr_in.sin_addr.s_addr = htonl(INADDR_ANY);  //trans addr from uint32_t host byte order to network byte order.
     s_addr_in.sin_port = htons(SOCK_PORT);          //trans port from uint16_t host byte order to network byte order.
-    fd_temp = bind(sockfd_server,(struct scokaddr *)(&s_addr_in),sizeof(s_addr_in));
+    fd_temp = bind(sockfd_server,(&s_addr_in),sizeof(s_addr_in));
 
     if(fd_temp == -1)
     {
@@ -80,11 +84,8 @@ int main()
     }
 
     int sockfd_server2;
-    int sockfd2;
     int fd_temp2;
     struct sockaddr_in s_addr_in2;
-    struct sockaddr_in s_addr_client2;
-    int client_length2;
 
     sockfd_server2 = socket(AF_INET,SOCK_STREAM,0);  //ipv4,TCP
     assert(sockfd_server2 != -1);
@@ -94,7 +95,7 @@ int main()
     s_addr_in2.sin_family = AF_INET;
     s_addr_in2.sin_addr.s_addr = htonl(INADDR_ANY);  //trans addr from uint32_t host byte order to network byte order.
     s_addr_in2.sin_port = htons(SOCK_PORT2);          //trans port from uint16_t host byte order to network byte order.
-    fd_temp2 = bind(sockfd_server2,(struct scokaddr *)(&s_addr_in2),sizeof(s_addr_in2));
+    fd_temp2 = bind(sockfd_server2,(&s_addr_in2),sizeof(s_addr_in2));
 
     if(fd_temp2 == -1)
     {
@@ -116,25 +117,24 @@ int main()
         printf("waiting for new connection...\n");
         pthread_t thread_id;
         client_length = sizeof(s_addr_client);
-        int *whichfd;
         printf("what new connection? \n");
         //Block here. Until server accpets a new connection.
-        sockfd = accept_any(sockfds, 2, (struct sockaddr *)(&s_addr_client),(socklen_t *)(&client_length), whichfd);
+        sockfd = accept_any(sockfds, 2,(&s_addr_client),(socklen_t *)(&client_length));
         if(sockfd == -1)
         {
             fprintf(stderr,"Accept error!\n");
             continue;                               //ignore current socket ,continue while loop.
         }
-        printf("whichfd %d, sockfd_server %d, sockfd_server2 %d\n", *whichfd, sockfd_server, sockfd_server2 );
+        printf("whichfd %d, sockfd_server %d, sockfd_server2 %d\n", whichfd, sockfd_server, sockfd_server2 );
         printf("A new connection occurs!\n");
-        if(*whichfd == sockfd_server){
+        if(whichfd == sockfd_server){
           int ret = pthread_create(&thread_id,NULL,(void *)(&Data_handle_up),(void *)(&sockfd));
           if(ret == -1)
           {
               fprintf(stderr,"pthread_create error!\n");
               break;                                  //break while loop
           }
-        }else if(*whichfd == sockfd_server2){
+        }else if(whichfd == sockfd_server2){
           int ret = pthread_create(&thread_id,NULL,(void *)(&Data_handle_down),(void *)(&sockfd));
           if(ret == -1)
           {

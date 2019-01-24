@@ -1,8 +1,7 @@
-
 all: client server
 
 client: client.c
-	gcc client.c -o client
+	gcc -Wall -pthread -pedantic -O2 -DNDEBUG -D_GNU_SOURCE -std=gnu99 $^ -lm -o $@
 
 server: server.c
-	gcc server.c -o server
+	gcc -Wall -pthread -pedantic -O2 -DNDEBUG -D_GNU_SOURCE -std=gnu99 $^ -o $@
